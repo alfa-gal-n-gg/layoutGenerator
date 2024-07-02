@@ -37,7 +37,7 @@ def clean_column_names(df):
     return df
 
 
-def create_json(panel_settings, panel_name, market_settings, market_name, selections_settings):
+def create_json(panel_settings, panel_name, market_settings, market_name, selections_settings, group_order):
     layout = {}
     groups_set = set()
 
@@ -57,7 +57,6 @@ def create_json(panel_settings, panel_name, market_settings, market_name, select
             },
             "markets_panel_order_index": panel_row['markets_panel_order_index'],
             "markets_panel_groups": groups,
-            "panel_type": panel_row['panel_type'],
             "should_have_panel_view": panel_row['should_have_panel_view'] if panel_row[
                                                                                  'should_have_panel_view'] is not None else False,
             "markets": []
@@ -94,7 +93,10 @@ def create_json(panel_settings, panel_name, market_settings, market_name, select
             layout[str(panel_id)]["markets"].append(market_dict)
         layout["default_generic_layout"] = generic_layout
 
-    return {"layout": layout, "groups_order": list(groups_set)}
+    # Read the group order from the new sheet
+    group_order_list = group_order['group_order'].tolist()
+
+    return {"layout": layout, "groups_order": group_order_list}
 
 
 def clean_json(data):
@@ -129,25 +131,40 @@ def decode_unicode(data):
 
 
 def main(file):
-    xls = pd.ExcelFile(file)
-    panel_settings = pd.read_excel(xls, 'Panel settings')
-    panel_name = pd.read_excel(xls, 'panel name')
-    market_settings = pd.read_excel(xls, 'Market settings')
-    market_name = pd.read_excel(xls, 'Market name')
-    selections_settings = pd.read_excel(xls, 'Selections settings')
+    try:
+        xls = pd.ExcelFile(file)
+        panel_settings = pd.read_excel(xls, 'Panel settings')
+        panel_name = pd.read_excel(xls, 'panel name')
+        market_settings = pd.read_excel(xls, 'Market settings')
+        market_name = pd.read_excel(xls, 'Market name')
+        selections_settings = pd.read_excel(xls, 'Selections settings')
+        group_order = pd.read_excel(xls, 'Group order')
+    except Exception as e:
+        print(f"Error loading Excel file: {e}")
+        return None, None, None, None, None
 
     panel_settings = clean_column_names(panel_settings)
     panel_name = clean_column_names(panel_name)
     market_settings = clean_column_names(market_settings)
     market_name = clean_column_names(market_name)
     selections_settings = clean_column_names(selections_settings)
+    group_order = clean_column_names(group_order)
 
-    json_result = create_json(panel_settings, panel_name, market_settings, market_name, selections_settings)
+    # Debug: Print column names
+    print("Panel Settings Columns:", panel_settings.columns)
+    print("Panel Name Columns:", panel_name.columns)
+    print("Market Settings Columns:", market_settings.columns)
+    print("Market Name Columns:", market_name.columns)
+    print("Selections Settings Columns:", selections_settings.columns)
+    print("Group Order Columns:", group_order.columns)
+
+    json_result = create_json(panel_settings, panel_name, market_settings, market_name, selections_settings,
+                              group_order)
     cleaned_json_result = clean_json(json_result)
     decoded_json_result = decode_unicode(cleaned_json_result)
     decoded_json_str = json.dumps(decoded_json_result, indent=2, ensure_ascii=False)
 
-    return decoded_json_str, panel_settings, market_settings, selections_settings
+    return decoded_json_str, panel_settings, market_settings, selections_settings, group_order
 
 
 st.set_page_config(page_title="Excel to JSON Layouts Converter", page_icon="static/logo.png", layout="centered")
@@ -165,17 +182,20 @@ uploaded_file = st.file_uploader("Choose an Excel file to upload", type="xlsx")
 if uploaded_file is not None:
     if st.button('Process File 🚀'):
         with st.spinner('Processing... Please wait ⏳'):
-            json_output, panel_settings, market_settings, selections_settings = main(uploaded_file)
-            st.success('Processing complete! ✅')
+            json_output, panel_settings, market_settings, selections_settings, group_order = main(uploaded_file)
+            if json_output:
+                st.success('Processing complete! ✅')
 
-            st.subheader('Generated JSON Output:')
-            with st.expander("View JSON Output", expanded=False):
-                st.json(json_output, expanded=False)
+                st.subheader('Generated JSON Output:')
+                with st.expander("View JSON Output", expanded=False):
+                    st.json(json_output, expanded=False)
 
-            st.download_button(label="Download JSON", data=json_output, file_name="output.json", mime="application/json")
+                st.download_button(label="Download JSON", data=json_output, file_name="output.json",
+                                   mime="application/json")
 
-            # Show metrics
-            st.subheader('Metrics')
-            st.metric(label="Number of Panels", value=panel_settings['panel_id'].nunique())
-            st.metric(label="Number of Markets", value=market_settings['market_layout_id'].nunique())
-            st.metric(label="Number of Selections", value=selections_settings['selection_type_id'].nunique())
+                st.subheader('Metrics')
+                st.metric(label="Number of Panels", value=panel_settings['panel_id'].nunique())
+                st.metric(label="Number of Markets", value=market_settings['market_layout_id'].nunique())
+                st.metric(label="Number of Selections", value=selections_settings['selection_type_id'].nunique())
+            else:
+                st.error('Error processing the file. Please check the console for details.')
