@@ -57,6 +57,7 @@ def create_json(panel_settings, panel_name, market_settings, market_name, select
             },
             "markets_panel_order_index": panel_row['markets_panel_order_index'],
             "markets_panel_groups": groups,
+            "is_visible": panel_row['is_visible'],
             "should_have_panel_view": panel_row['should_have_panel_view'] if panel_row[
                                                                                  'should_have_panel_view'] is not None else False,
             "markets": []
